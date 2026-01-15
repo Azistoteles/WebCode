@@ -77,9 +77,8 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
 RUN npm install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com
 
 # ============================================
-# 安装 Codex CLI
+# 安装 Codex CLI（指定版本 0.80.0）
 # ============================================
-# 方式1: 使用 npm 安装（推荐）
 RUN npm install -g @openai/codex@0.80.0 --registry=https://registry.npmmirror.com
 
 # 创建 Codex 配置目录
@@ -107,11 +106,16 @@ COPY --from=publish /app/publish .
 COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
+# 复制 Claude Code Skills 到容器
+COPY skills/ /app/skills/
+
 # ============================================
 # 创建非 root 用户以提高安全性
 # ============================================
 RUN groupadd -r appuser && useradd -r -g appuser -u 1001 -m appuser \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app \
+    && mkdir -p /webcode/workspace \
+    && chown -R appuser:appuser /webcode
 
 # 切换到非 root 用户
 USER appuser

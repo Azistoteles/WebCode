@@ -115,6 +115,32 @@ mkdir -p /app/data
 mkdir -p /app/workspaces
 mkdir -p /app/logs
 
+# ============================================
+# 配置 Claude Code Skills
+# ============================================
+echo "Configuring Claude Code Skills..."
+CLAUDE_SKILLS_DIR="/home/appuser/.claude/skills"
+if [ -d "/app/skills/claude" ]; then
+    echo "Copying Claude Code skills to $CLAUDE_SKILLS_DIR..."
+    mkdir -p "$CLAUDE_SKILLS_DIR"
+    cp -r /app/skills/claude/* "$CLAUDE_SKILLS_DIR/"
+    echo "Claude Code skills installed:"
+    ls "$CLAUDE_SKILLS_DIR" || echo "No skills found"
+fi
+
+# ============================================
+# 配置 Codex Skills
+# ============================================
+echo "Configuring Codex Skills..."
+CODEX_SKILLS_DIR="/home/appuser/.codex/skills"
+if [ -d "/app/skills/codex" ]; then
+    echo "Copying Codex skills to $CODEX_SKILLS_DIR..."
+    mkdir -p "$CODEX_SKILLS_DIR"
+    cp -r /app/skills/codex/* "$CODEX_SKILLS_DIR/"
+    echo "Codex skills installed:"
+    ls "$CODEX_SKILLS_DIR" || echo "No skills found"
+fi
+
 echo ""
 
 # ============================================
