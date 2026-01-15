@@ -198,6 +198,12 @@ public partial class Setup : ComponentBase
         NavigationManager.NavigateTo("/", forceLoad: true);
     }
 
+    private Task HandleLanguageChanged(string languageCode)
+    {
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
     // Claude Code 环境变量操作
     private void AddClaudeEnvVar()
     {
