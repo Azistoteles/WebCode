@@ -48,6 +48,8 @@ services:
       - CODEX_SANDBOX_MODE=${CODEX_SANDBOX_MODE}
       
     volumes:
+      # 配置文件（挂载最新配置）
+      - ./appsettings.json:/app/appsettings.json:ro
       # 数据持久化（必需）
       - ./webcodecli-data:/app/data
       # 工作区持久化（自动挂载，无需手动配置）
