@@ -60,6 +60,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# 安装 su-exec（用于降权执行，Debian 官方源自带）
+RUN apt-get update && apt-get install -y su-exec && rm -rf /var/lib/apt/lists/*
+
 # 配置 pip 国内镜像
 RUN pip3 config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 
@@ -104,26 +107,20 @@ RUN claude --version || echo "Claude CLI installed" \
 # 创建数据和工作区目录
 RUN mkdir -p /app/data /app/workspaces /app/logs
 
-# 复制发布文件
+# ============================================
+# 创建非 root 用户以提高安全性
+# ============================================
+RUN groupadd -r appuser && useradd -r -g appuser -u 1001 -m appuser
+
+# 复制发布文件（在切换用户之前）
 COPY --from=publish /app/publish .
 
-# 复制 Docker 启动脚本
+# 复制 Docker 启动脚本（以 root 权限运行，用于修复挂载卷权限）
 COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # 复制 Claude Code Skills 到容器
 COPY skills/ /app/skills/
-
-# ============================================
-# 创建非 root 用户以提高安全性
-# ============================================
-RUN groupadd -r appuser && useradd -r -g appuser -u 1001 -m appuser \
-    && chown -R appuser:appuser /app \
-    && mkdir -p /webcode/workspace \
-    && chown -R appuser:appuser /webcode
-
-# 切换到非 root 用户
-USER appuser
 
 # 暴露端口
 EXPOSE 5000
