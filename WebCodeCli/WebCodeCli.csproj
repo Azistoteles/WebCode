@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -21,5 +21,13 @@
   <ItemGroup>
     <ProjectReference Include="..\WebCodeCli.Domain\WebCodeCli.Domain.csproj" />
   </ItemGroup>
+
+  <!-- 编译时将 Resources\Localization 复制到 wwwroot\Resources\Localization -->
+  <Target Name="CopyLocalizationFiles" BeforeTargets="Build">
+    <ItemGroup>
+      <LocalizationFiles Include="Resources\Localization\*.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LocalizationFiles)" DestinationFolder="wwwroot\Resources\Localization" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

@@ -240,6 +240,9 @@ public partial class CodeAssistant : ComponentBase, IAsyncDisposable
     private string _selectedFrontendProject = "";
     private DevServerInfo? _currentDevServer = null;
     private bool _isServerStarting = false;
+    private string _previewRootPath = ""; // 预览根目录（相对于工作区的路径）
+    private List<string> _availablePreviewRoots = new(); // 可用的预览根目录列表
+    private bool _showPreviewRootSelector = false; // 是否显示预览根目录选择器
     private DependencyInstallProgress _installProgressModal = default!;
     private bool _showInstallProgress = false;
     private string _installStatusMessage = "";
@@ -4648,7 +4651,41 @@ public partial class CodeAssistant : ComponentBase, IAsyncDisposable
         try
         {
             var workspacePath = CliExecutorService.GetSessionWorkspacePath(_sessionId);
-            _detectedFrontendProjects = await FrontendProjectDetector.DetectProjectsAsync(workspacePath);
+            
+            // 扫描可用的预览根目录（包含 package.json 的目录）
+            await ScanAvailablePreviewRoots(workspacePath);
+            
+            // 如果设置了自定义预览根目录，使用它
+            var searchPath = workspacePath;
+            if (!string.IsNullOrEmpty(_previewRootPath))
+            {
+                var customPath = Path.Combine(workspacePath, _previewRootPath);
+                if (Directory.Exists(customPath))
+                {
+                    searchPath = customPath;
+                }
+            }
+            
+            _detectedFrontendProjects = await FrontendProjectDetector.DetectProjectsAsync(searchPath);
+            
+            // 如果使用自定义根目录，需要调整相对路径
+            if (!string.IsNullOrEmpty(_previewRootPath) && _detectedFrontendProjects.Any())
+            {
+                foreach (var proj in _detectedFrontendProjects)
+                {
+                    // 将相对路径调整为相对于工作区根目录
+                    if (proj.RelativePath == ".")
+                    {
+                        proj.RelativePath = _previewRootPath;
+                        proj.Key = _previewRootPath.Replace("\\", "/");
+                    }
+                    else
+                    {
+                        proj.RelativePath = Path.Combine(_previewRootPath, proj.RelativePath);
+                        proj.Key = proj.RelativePath.Replace("\\", "/");
+                    }
+                }
+            }
             
             if (_detectedFrontendProjects.Any() && string.IsNullOrEmpty(_selectedFrontendProject))
             {
@@ -4661,6 +4698,74 @@ public partial class CodeAssistant : ComponentBase, IAsyncDisposable
         {
             Console.WriteLine($"检测前端项目失败: {ex.Message}");
         }
+    }
+    
+    /// <summary>
+    /// 扫描可用的预览根目录
+    /// </summary>
+    private async Task ScanAvailablePreviewRoots(string workspacePath)
+    {
+        _availablePreviewRoots.Clear();
+        _availablePreviewRoots.Add(""); // 空字符串表示工作区根目录
+        
+        try
+        {
+            // 查找所有包含 package.json 的目录
+            var packageJsonFiles = await Task.Run(() => 
+                Directory.GetFiles(workspacePath, "package.json", SearchOption.AllDirectories)
+                    .Where(f => !f.Contains("node_modules"))
+                    .ToList());
+            
+            foreach (var packageJson in packageJsonFiles)
+            {
+                var dir = Path.GetDirectoryName(packageJson);
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    var relativePath = Path.GetRelativePath(workspacePath, dir);
+                    if (relativePath != "." && !_availablePreviewRoots.Contains(relativePath))
+                    {
+                        _availablePreviewRoots.Add(relativePath);
+                    }
+                }
+            }
+            
+            // 同时查找常见的前端目录结构
+            var commonFrontendDirs = new[] { "web", "Web", "frontend", "Frontend", "client", "Client", "app", "App", "ui", "UI", "src", "packages" };
+            foreach (var dirName in commonFrontendDirs)
+            {
+                var dirPath = Path.Combine(workspacePath, dirName);
+                if (Directory.Exists(dirPath) && !_availablePreviewRoots.Contains(dirName))
+                {
+                    _availablePreviewRoots.Add(dirName);
+                }
+            }
+            
+            // 排序
+            _availablePreviewRoots = _availablePreviewRoots.OrderBy(x => x).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"扫描预览根目录失败: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// 切换预览根目录选择器显示状态
+    /// </summary>
+    private void TogglePreviewRootSelector()
+    {
+        _showPreviewRootSelector = !_showPreviewRootSelector;
+    }
+    
+    /// <summary>
+    /// 设置预览根目录并重新检测前端项目
+    /// </summary>
+    private async Task SetPreviewRootPath(string path)
+    {
+        _previewRootPath = path;
+        _selectedFrontendProject = ""; // 重置选中的项目
+        _showPreviewRootSelector = false;
+        await DetectFrontendProjects();
     }
 
     /// <summary>
