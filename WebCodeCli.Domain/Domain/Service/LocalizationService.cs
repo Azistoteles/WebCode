@@ -107,34 +107,51 @@ public class LocalizationService : ILocalizationService
             return _translationsCache[language];
         }
 
-        try
+        // 重试逻辑，处理网络延迟和 JS 未就绪的情况
+        const int maxRetries = 3;
+        for (int retry = 0; retry < maxRetries; retry++)
         {
-            // 使用 JavaScript fetch 来加载翻译文件
-            var filePath = $"./Resources/Localization/{language}.json";
-            var json = await _jsRuntime.InvokeAsync<string>("localizationHelper.fetchTranslationFile", filePath);
-            
-            if (string.IsNullOrEmpty(json))
+            try
             {
-                Console.WriteLine($"翻译文件为空 ({language})");
-                return new Dictionary<string, object>();
+                // 使用 JavaScript fetch 来加载翻译文件
+                var filePath = $"./Resources/Localization/{language}.json";
+                var json = await _jsRuntime.InvokeAsync<string>("localizationHelper.fetchTranslationFile", filePath);
+                
+                if (string.IsNullOrEmpty(json))
+                {
+                    Console.WriteLine($"翻译文件为空 ({language})，第 {retry + 1} 次尝试");
+                    if (retry < maxRetries - 1)
+                    {
+                        await Task.Delay(300); // 等待后重试
+                        continue;
+                    }
+                    return new Dictionary<string, object>();
+                }
+                
+                var translations = JsonSerializer.Deserialize<Dictionary<string, object>>(json, 
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) 
+                    ?? new Dictionary<string, object>();
+
+                _translationsCache[language] = translations;
+                
+                // 同时加载到 JS 端
+                await _jsRuntime.InvokeVoidAsync("localizationHelper.loadTranslations", language, translations);
+
+                Console.WriteLine($"[LocalizationService] 成功加载 {language} 翻译资源");
+                return translations;
             }
-            
-            var translations = JsonSerializer.Deserialize<Dictionary<string, object>>(json, 
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) 
-                ?? new Dictionary<string, object>();
-
-            _translationsCache[language] = translations;
-            
-            // 同时加载到 JS 端
-            await _jsRuntime.InvokeVoidAsync("localizationHelper.loadTranslations", language, translations);
-
-            return translations;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"加载翻译资源失败 ({language})，第 {retry + 1} 次尝试: {ex.Message}");
+                if (retry < maxRetries - 1)
+                {
+                    await Task.Delay(300); // 等待后重试
+                }
+            }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"加载翻译资源失败 ({language}): {ex.Message}");
-            return new Dictionary<string, object>();
-        }
+
+        Console.WriteLine($"[LocalizationService] 加载翻译资源失败 ({language})，已达最大重试次数");
+        return new Dictionary<string, object>();
     }
 
     public List<LanguageInfo> GetSupportedLanguages()

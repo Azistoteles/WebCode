@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
@@ -59,6 +59,14 @@
         console.log('✓ Prism.js 及语言包加载完成');
         console.log('✓ 支持的语言:', Object.keys(Prism.languages).join(', '));
     </script>
+    
+    <!-- IndexedDB 必须最先加载 -->
+    <script src="./js/indexeddb-storage.js?v=4"></script>
+    <script src="./js/localization-helper.js?v=1"></script>
+    <script src="./js/session-storage.js?v=3"></script>
+    <script src="./js/debug-session.js?v=1"></script>
+    <script src="./js/code-assistant-helper.js?v=3"></script>
+    <script src="./js/debug-check.js?v=2"></script>
     
     <script src="./js/vue2.js"></script>
     <script src="./js/main.js"></script>

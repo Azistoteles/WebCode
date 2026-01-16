@@ -11,49 +11,81 @@ window.localizationHelper = (function() {
     let currentLanguage = DEFAULT_LANGUAGE;
     let translations = {};
 
+    let initPromise = null;
+    let isInitialized = false;
+
     /**
      * 初始化本地化 - 使用 IndexedDB
      * @returns {Promise<string>} 当前语言
      */
     async function init() {
-        try {
-            // 等待 IndexedDB 准备就绪
-            let waitCount = 0;
-            while (!window.webCliIndexedDB?.isReady() && waitCount < 50) {
-                await new Promise(resolve => setTimeout(resolve, 50));
-                waitCount++;
-            }
-            
-            // 尝试从 IndexedDB 读取保存的语言设置
-            if (window.webCliIndexedDB?.isReady()) {
-                const savedLanguage = await window.webCliIndexedDB.getSetting('language', null);
-                if (savedLanguage) {
-                    currentLanguage = savedLanguage;
-                    console.log(`✅ 从 IndexedDB 加载语言设置: ${currentLanguage}`);
-                    return currentLanguage;
-                }
-            }
-            
-            // 如果 IndexedDB 没有设置，尝试从浏览器语言自动检测
-            const browserLang = navigator.language || navigator.userLanguage;
-            if (browserLang) {
-                // 标准化语言代码
-                if (browserLang.startsWith('zh')) {
-                    currentLanguage = 'zh-CN';
-                } else if (browserLang.startsWith('en')) {
-                    currentLanguage = 'en-US';
-                } else if (browserLang.startsWith('ja')) {
-                    currentLanguage = 'ja-JP';
-                } else if (browserLang.startsWith('ko')) {
-                    currentLanguage = 'ko-KR';
-                }
-            }
-        } catch (error) {
-            console.error('❌ 初始化本地化失败:', error);
+        // 如果已经初始化完成，直接返回当前语言
+        if (isInitialized) {
+            return currentLanguage;
         }
-        
-        console.log(`✅ 本地化初始化完成，当前语言: ${currentLanguage}`);
-        return currentLanguage;
+
+        // 如果正在初始化，返回同一个 Promise 避免重复初始化
+        if (initPromise) {
+            return initPromise;
+        }
+
+        initPromise = (async () => {
+            try {
+                console.log('🔄 开始初始化本地化...');
+                
+                // 等待 IndexedDB 准备就绪（最多等待 5 秒，适应慢网络）
+                let waitCount = 0;
+                const maxWait = 100; // 100 * 50ms = 5秒
+                while (!window.webCliIndexedDB?.isReady() && waitCount < maxWait) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    waitCount++;
+                }
+                
+                if (waitCount >= maxWait) {
+                    console.warn('⚠️ IndexedDB 等待超时，使用浏览器语言设置');
+                }
+                
+                // 尝试从 IndexedDB 读取保存的语言设置
+                if (window.webCliIndexedDB?.isReady()) {
+                    try {
+                        const savedLanguage = await window.webCliIndexedDB.getSetting('language', null);
+                        if (savedLanguage) {
+                            currentLanguage = savedLanguage;
+                            console.log(`✅ 从 IndexedDB 加载语言设置: ${currentLanguage}`);
+                            isInitialized = true;
+                            return currentLanguage;
+                        }
+                    } catch (dbError) {
+                        console.warn('⚠️ 从 IndexedDB 读取语言设置失败:', dbError);
+                    }
+                }
+                
+                // 如果 IndexedDB 没有设置，尝试从浏览器语言自动检测
+                const browserLang = navigator.language || navigator.userLanguage;
+                if (browserLang) {
+                    // 标准化语言代码
+                    if (browserLang.startsWith('zh')) {
+                        currentLanguage = 'zh-CN';
+                    } else if (browserLang.startsWith('en')) {
+                        currentLanguage = 'en-US';
+                    } else if (browserLang.startsWith('ja')) {
+                        currentLanguage = 'ja-JP';
+                    } else if (browserLang.startsWith('ko')) {
+                        currentLanguage = 'ko-KR';
+                    }
+                }
+                
+                isInitialized = true;
+                console.log(`✅ 本地化初始化完成，当前语言: ${currentLanguage}`);
+                return currentLanguage;
+            } catch (error) {
+                console.error('❌ 初始化本地化失败:', error);
+                isInitialized = true; // 即使失败也标记为已初始化，避免重复尝试
+                return currentLanguage;
+            }
+        })();
+
+        return initPromise;
     }
 
     /**
@@ -259,7 +291,8 @@ window.localizationHelper = (function() {
         getSupportedLanguages,
         formatDate,
         formatNumber,
-        fetchTranslationFile
+        fetchTranslationFile,
+        isReady: () => isInitialized
     };
 })();
 

@@ -321,8 +321,35 @@ public partial class CodeAssistant : ComponentBase, IAsyncDisposable
                 // 首次渲染后确保本地化资源已加载（避免 JS 互操作时机问题）
                 if (_translations.Count == 0)
                 {
-                    _currentLanguage = await L.GetCurrentLanguageAsync();
-                    await LoadTranslationsAsync();
+                    // 等待 JS 端国际化初始化完成（最多重试 3 次）
+                    int retryCount = 0;
+                    const int maxRetries = 3;
+                    while (retryCount < maxRetries)
+                    {
+                        try
+                        {
+                            _currentLanguage = await L.GetCurrentLanguageAsync();
+                            await LoadTranslationsAsync();
+                            
+                            if (_translations.Count > 0)
+                            {
+                                Console.WriteLine($"[国际化] 翻译资源加载成功，共 {_translations.Count} 条");
+                                break;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[国际化] 第 {retryCount + 1} 次加载失败: {ex.Message}");
+                        }
+                        
+                        retryCount++;
+                        if (retryCount < maxRetries)
+                        {
+                            // 等待一小段时间再重试
+                            await Task.Delay(500);
+                        }
+                    }
+                    
                     StateHasChanged();
                 }
 
