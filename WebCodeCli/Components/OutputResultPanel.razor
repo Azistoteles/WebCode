@@ -100,16 +100,15 @@
                         var isOpen = IsGroupOpen(group);
                         var defaultOpen = !group.IsCompleted;
                         var statusText = group.IsCompleted ? "已完成" : "进行中";
-                        var statusClass = group.IsCompleted ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-50 text-amber-700 border-amber-200";
+                        var statusClass = group.IsCompleted ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700";
                         
                         var isCommand = group.Kind == "command_execution";
-                        var containerClass = isCommand 
-                            ? "border border-gray-300 rounded-xl shadow-md hover:shadow-lg overflow-hidden bg-white ring-1 ring-black/5 my-2 transition-all" 
-                            : "border border-blue-100 rounded-xl shadow-md hover:shadow-lg overflow-hidden bg-white my-2 transition-all";
                         
-                        var headerClass = isCommand
-                            ? "w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors flex items-center justify-between gap-3 text-left border-b border-gray-100 group"
-                            : "w-full px-4 py-3 bg-blue-50/30 hover:bg-blue-50 transition-colors flex items-center justify-between gap-3 text-left border-b border-blue-50 group";
+                        // Unified container style
+                        var containerClass = "border border-gray-200 rounded-xl shadow-sm hover:shadow overflow-hidden bg-white my-3 transition-all";
+                        
+                        // Unified header style
+                        var headerClass = "w-full px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors flex items-center justify-between gap-3 text-left border-b border-gray-100 group";
 
                         <div @key="group.Id" class="@containerClass">
                             <button type="button"
@@ -306,85 +305,35 @@
 
     private string GetEventBadgeClass(OutputEvent evt)
     {
-        // 特殊 ItemType 处理
-        if (evt.ItemType == "todo_list")
-        {
-            return "bg-gray-800 text-white";
-        }
-
-        if (evt.ItemType == "reasoning")
-        {
-            return "bg-gray-200 text-gray-800";
-        }
-
-        if (evt.ItemType == "agent_message")
-        {
-            return "bg-amber-100 text-amber-700";
-        }
-
-        return evt.Type switch
-        {
-            // Codex 事件类型
-            "thread.started" => "bg-gray-800 text-white",
-            "turn.started" => "bg-sky-100 text-sky-700",
-            "turn.completed" => "bg-emerald-100 text-emerald-700",
-            "turn.failed" => "bg-red-100 text-red-700",
-            "item.started" => "bg-amber-100 text-amber-700",
-            "item.updated" => "bg-blue-100 text-blue-700",
-            "error" => "bg-red-100 text-red-700",
-            
-            // Claude Code 事件类型
-            "init" => "bg-gray-800 text-white",
-            "message" or "assistant" or "assistant:message" => "bg-emerald-100 text-emerald-700",
-            "tool_use" => "bg-sky-100 text-sky-700",
-            "tool_result" => "bg-blue-100 text-blue-700",
-            "result" => "bg-emerald-100 text-emerald-700",
-            "system" => "bg-gray-100 text-gray-700",
-            "user" => "bg-blue-100 text-blue-700",
-            "raw" => "bg-gray-200 text-gray-700",
-            
-            // OpenCode 事件类型
-            "session_start" => "bg-gray-800 text-white",
-            "step_start" => "bg-sky-100 text-sky-700",
-            "step_finish" => "bg-emerald-100 text-emerald-700",
-            "text" => "bg-emerald-100 text-emerald-700",
-            "tool_start" => "bg-sky-100 text-sky-700",
-            "tool_finish" => "bg-blue-100 text-blue-700",
-            "session_end" or "complete" => "bg-emerald-100 text-emerald-700",
-            
-            // 旧版 CodeAssistant 类型（兼容）
-            "code" => "bg-blue-100 text-blue-700",
-            "thinking" => "bg-yellow-100 text-yellow-700",
-            
-            // SharedWorkspace 类型（兼容）
-            "thread.completed" => "bg-gray-800 text-white",
-            "item.completed" => "bg-green-100 text-green-700",
-            
-            _ => "bg-gray-200 text-gray-700"
-        };
+        // Category Mappings
+        var isTodo = evt.ItemType == "todo_list";
+        var isThinking = evt.ItemType == "reasoning" || evt.Type == "thinking";
+        var isMessage = evt.ItemType == "agent_message" || evt.Type == "message" || evt.Type == "assistant" || evt.Type == "assistant:message" || evt.Type == "text";
+        var isError = evt.Type == "error" || evt.Type == "turn.failed";
+        var isTool = evt.Type.StartsWith("tool_");
+        var isUser = evt.Type == "user";
+        var isSuccess = evt.Type.Contains("completed") || evt.Type == "result" || evt.Type == "session_end" || evt.Type == "step_finish";
+        
+        if (isTodo) return "bg-violet-100 text-violet-800";
+        if (isThinking) return "bg-amber-100 text-amber-800 border border-amber-200";
+        if (isMessage) return "bg-white border border-gray-200 text-gray-700";
+        if (isError) return "bg-rose-100 text-rose-800 border border-rose-200";
+        if (isTool) return "bg-slate-100 text-slate-600 font-mono text-xs";
+        if (isUser) return "bg-indigo-50 text-indigo-700 border border-indigo-100";
+        if (isSuccess) return "bg-emerald-50 text-emerald-700 border border-emerald-100";
+        
+        // Default System/Other
+        return "bg-gray-50 text-gray-600 border border-gray-100";
     }
 
     private string GetEventBadgeLabel(OutputEvent evt)
     {
-        // 特殊 ItemType 处理
-        if (evt.ItemType == "todo_list")
-        {
-            return "待办";
-        }
-
-        if (evt.ItemType == "reasoning")
-        {
-            return "推理";
-        }
-
-        if (evt.ItemType == "agent_message")
-        {
-            return "回复";
-        }
+        if (evt.ItemType == "todo_list") return "待办";
+        if (evt.ItemType == "reasoning") return "推理";
+        if (evt.ItemType == "agent_message") return "回复";
 
         return evt.Type switch
         {
-            // Codex 事件类型
             "thread.started" => "线程",
             "turn.started" => "开始",
             "turn.completed" => "完成",
@@ -392,8 +341,6 @@
             "item.started" => "开始",
             "item.updated" => "更新",
             "error" => "错误",
-            
-            // Claude Code 事件类型
             "init" => "初始化",
             "message" or "assistant" or "assistant:message" => "回复",
             "tool_use" => "工具调用",
@@ -402,8 +349,6 @@
             "system" => "系统",
             "user" => "输入",
             "raw" => "输出",
-            
-            // OpenCode 事件类型
             "session_start" => "会话开始",
             "step_start" => "步骤开始",
             "step_finish" => "完成",
@@ -411,77 +356,33 @@
             "tool_start" => "工具调用",
             "tool_finish" => "工具结果",
             "session_end" or "complete" => "结果",
-            
-            // 旧版 CodeAssistant 类型（兼容）
-            "code" => "代码",
+            "code" => "代码Fragment",
             "thinking" => "思考",
-            
-            // SharedWorkspace 类型（兼容）
             "thread.completed" => "线程完成",
             "item.completed" => "节点完成",
-            
             _ => evt.Type
         };
     }
 
     private string GetEventContainerAccent(OutputEvent evt)
     {
-        // 特殊 ItemType 处理
-        if (evt.ItemType == "todo_list")
-        {
-            return "border-l-4 border-gray-800 bg-gray-50";
-        }
+        var isTodo = evt.ItemType == "todo_list";
+        var isThinking = evt.ItemType == "reasoning" || evt.Type == "thinking";
+        var isMessage = evt.ItemType == "agent_message" || evt.Type == "message" || evt.Type == "assistant" || evt.Type == "assistant:message" || evt.Type == "text";
+        var isError = evt.Type == "error" || evt.Type == "turn.failed";
+        var isTool = evt.Type.StartsWith("tool_");
+        var isUser = evt.Type == "user";
+        var isSuccess = evt.Type.Contains("completed") || evt.Type == "result" || evt.Type == "session_end" || evt.Type == "step_finish";
 
-        if (evt.ItemType == "reasoning")
-        {
-            return "border-l-4 border-gray-500 bg-gray-50";
-        }
-
-        if (evt.ItemType == "agent_message")
-        {
-            return "border-l-4 border-amber-400 bg-white";
-        }
-
-        return evt.Type switch
-        {
-            // Codex 事件类型
-            "thread.started" => "border-l-4 border-gray-800 bg-gray-50",
-            "turn.started" => "border-l-4 border-sky-400 bg-sky-50",
-            "turn.completed" => "border-l-4 border-emerald-400 bg-emerald-50",
-            "turn.failed" => "border-l-4 border-red-500 bg-red-50",
-            "item.started" => "border-l-4 border-amber-300 bg-amber-50",
-            "item.updated" => "border-l-4 border-blue-300 bg-blue-50",
-            "error" => "border-l-4 border-red-500 bg-red-50",
-            
-            // Claude Code 事件类型
-            "init" => "border-l-4 border-gray-800 bg-gray-50",
-            "message" or "assistant" or "assistant:message" => "border-l-4 border-emerald-400 bg-emerald-50",
-            "tool_use" => "border-l-4 border-sky-400 bg-sky-50",
-            "tool_result" => "border-l-4 border-blue-300 bg-blue-50",
-            "result" => "border-l-4 border-emerald-400 bg-emerald-50",
-            "system" => "border-l-4 border-gray-400 bg-gray-50",
-            "user" => "border-l-4 border-blue-400 bg-blue-50",
-            "raw" => "border-l-4 border-gray-200 bg-white",
-            
-            // OpenCode 事件类型
-            "session_start" => "border-l-4 border-gray-800 bg-gray-50",
-            "step_start" => "border-l-4 border-sky-400 bg-sky-50",
-            "step_finish" => "border-l-4 border-emerald-400 bg-emerald-50",
-            "text" => "border-l-4 border-emerald-400 bg-emerald-50",
-            "tool_start" => "border-l-4 border-sky-400 bg-sky-50",
-            "tool_finish" => "border-l-4 border-blue-300 bg-blue-50",
-            "session_end" or "complete" => "border-l-4 border-emerald-400 bg-emerald-50",
-            
-            // 旧版 CodeAssistant 类型（兼容）
-            "code" => "border-l-4 border-blue-300 bg-blue-50",
-            "thinking" => "border-l-4 border-yellow-400 bg-yellow-50",
-            
-            // SharedWorkspace 类型（兼容）
-            "thread.completed" => "border-l-4 border-gray-800 bg-gray-50",
-            "item.completed" => "border-l-4 border-green-400 bg-green-50",
-            
-            _ => "border-l-4 border-gray-200 bg-white"
-        };
+        if (isTodo) return "border-l-4 border-violet-500 bg-violet-50/20";
+        if (isThinking) return "border-l-4 border-amber-400 bg-amber-50/20";
+        if (isMessage) return "border-l-4 border-slate-400 bg-white";
+        if (isError) return "border-l-4 border-rose-500 bg-rose-50/20";
+        if (isTool) return "border-l-4 border-slate-300 bg-slate-50/30";
+        if (isUser) return "border-l-4 border-indigo-500 bg-indigo-50/20";
+        if (isSuccess) return "border-l-4 border-emerald-500 bg-emerald-50/20";
+        
+        return "border-l-4 border-gray-200 bg-white";
     }
 
     private string GetEventDisplayTitle(OutputEvent evt)

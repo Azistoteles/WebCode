@@ -68,6 +68,7 @@
     "priority": "優先度",
     "createdAt": "作成時間",
     "copy": "内容をコピー",
+    "copied": "コピー済み",
     "compressing": "圧縮中...",
     "compressStart": "圧縮を開始",
     "compress": {

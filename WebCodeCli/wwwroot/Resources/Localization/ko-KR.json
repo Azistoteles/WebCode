@@ -68,6 +68,7 @@
     "priority": "우선순위",
     "createdAt": "생성 시간",
     "copy": "내용 복사",
+    "copied": "복사됨",
     "compressing": "압축 중...",
     "compressStart": "압축 시작",
     "compress": {

@@ -349,6 +349,7 @@
     "priority": "优先级",
     "createdAt": "创建时间",
     "copy": "复制内容",
+    "copied": "已复制",
     "compressing": "压缩中...",
     "compressStart": "开始压缩",
     "compress": {
