@@ -378,6 +378,7 @@
         if (node.Type == "folder")
         {
             ToggleFolder(node.Path);
+            StateHasChanged();
             return;
         }
 
