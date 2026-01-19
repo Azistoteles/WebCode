@@ -214,7 +214,8 @@
                                 TotalEventCount="@OutputEventCount"
                                 DisplayedEventCount="@OutputEventCount"
                                 EventGroups="@ConvertOutputEventsToGroups()"
-                                IsGroupOpenFunc="@(_ => true)" />
+                                OnToggleGroupCallback="HandleToggleOutputGroup"
+                                IsGroupOpenFunc="@IsOutputGroupOpen" />
                         }
                         else if (_sessionInfo?.Messages?.Any() == true)
                         {
@@ -339,6 +340,9 @@
     private string _officePreviewUrl = string.Empty;
     private string _officePreviewError = string.Empty;
     private bool _isLoadingOffice = false;
+    
+    // 输出事件组折叠状态管理
+    private readonly HashSet<string> _openOutputGroups = new();
     
     // 计算属性
     private bool HasOutputEvents => _sessionInfo?.OutputEvents?.Any() == true;
@@ -500,15 +504,18 @@
             // 使用组件的方法确定预览类型
             _previewType = FilePreviewPanel.GetPreviewTypeFromExtension(ext);
             
+            // 对路径进行正确的编码：对路径的每个部分分别编码，保留斜杠
+            var encodedPath = EncodePathForUrl(node.Path);
+            
             // 检查是否为图片
             if (_previewType == FilePreviewPanel.FilePreviewType.Image)
             {
-                _imagePreviewUrl = $"/api/share/{ShareCode}/workspace/file/{Uri.EscapeDataString(node.Path)}?token={Uri.EscapeDataString(_accessToken)}";
+                _imagePreviewUrl = $"/api/share/{ShareCode}/workspace/file/{encodedPath}?token={Uri.EscapeDataString(_accessToken)}";
             }
             // 检查是否为 HTML
             else if (_previewType == FilePreviewPanel.FilePreviewType.Html)
             {
-                _htmlPreviewUrl = $"/api/share/{ShareCode}/workspace/file/{Uri.EscapeDataString(node.Path)}?token={Uri.EscapeDataString(_accessToken)}";
+                _htmlPreviewUrl = $"/api/share/{ShareCode}/workspace/file/{encodedPath}?token={Uri.EscapeDataString(_accessToken)}";
             }
             // 检查是否为 Office 文档
             else if (_previewType == FilePreviewPanel.FilePreviewType.Office)
@@ -517,7 +524,7 @@
                 StateHasChanged();
 
                 // 构建文件访问 URL
-                var fileUrl = $"{NavigationManager.BaseUri.TrimEnd('/')}/api/share/{ShareCode}/workspace/file/{Uri.EscapeDataString(node.Path)}?token={Uri.EscapeDataString(_accessToken)}";
+                var fileUrl = $"{NavigationManager.BaseUri.TrimEnd('/')}/api/share/{ShareCode}/workspace/file/{encodedPath}?token={Uri.EscapeDataString(_accessToken)}";
                 
                 // 生成 Office 预览 URL
                 var (previewUrl, errorMessage) = FilePreviewPanel.GenerateOfficePreviewUrl(fileUrl, NavigationManager.BaseUri);
@@ -530,7 +537,7 @@
             else if (_previewType == FilePreviewPanel.FilePreviewType.Code || _previewType == FilePreviewPanel.FilePreviewType.Text)
             {
                 // 文本文件，获取内容
-                var request = new HttpRequestMessage(HttpMethod.Get, $"/api/share/{ShareCode}/workspace/file/{Uri.EscapeDataString(node.Path)}");
+                var request = new HttpRequestMessage(HttpMethod.Get, $"/api/share/{ShareCode}/workspace/file/{encodedPath}");
                 request.Headers.Add("X-Share-Token", _accessToken);
 
                 var response = await Http.SendAsync(request);
@@ -762,32 +769,140 @@
             return new List<OutputEventGroup>();
         }
 
-        // 将每个事件转换为单独的组
-        return _sessionInfo.OutputEvents.Select((evt, index) => new OutputEventGroup
+        var groups = new List<OutputEventGroup>();
+        OutputEventGroup? currentGroup = null;
+
+        foreach (var evt in _sessionInfo.OutputEvents)
         {
-            Id = $"event_{index}",
-            Kind = "single",
-            Title = evt.Title,
-            IsCompleted = true,
-            IsCollapsible = false,
-            Items = new List<OutputEvent>
+            // 工具调用类型的事件需要分组
+            var isToolEvent = evt.Type.StartsWith("tool_") || 
+                            evt.Type == "command" || 
+                            evt.Type.Contains("execution");
+
+            if (isToolEvent)
             {
-                new OutputEvent
+                // 如果是工具开始事件，创建新组
+                if (evt.Type == "tool_use" || evt.Type == "tool_start" || evt.Type == "command")
                 {
-                    Type = evt.Type,
-                    Title = evt.Title,
-                    Content = evt.Content ?? string.Empty,
-                    ItemType = evt.ItemType,
-                    Usage = evt.Usage != null ? new TokenUsage
+                    // 保存上一个组
+                    if (currentGroup != null && currentGroup.Items.Any())
                     {
-                        InputTokens = evt.Usage.InputTokens,
-                        CachedInputTokens = evt.Usage.CachedInputTokens,
-                        OutputTokens = evt.Usage.OutputTokens,
-                        TotalTokens = evt.Usage.InputTokens + evt.Usage.CachedInputTokens + evt.Usage.OutputTokens
-                    } : null
+                        groups.Add(currentGroup);
+                    }
+
+                    // 创建新组
+                    currentGroup = new OutputEventGroup
+                    {
+                        Id = $"group_{groups.Count}",
+                        Kind = "command_execution",
+                        Title = evt.Title ?? "工具调用",
+                        IsCompleted = false,
+                        IsCollapsible = true,
+                        Items = new List<OutputEvent>()
+                    };
+                }
+
+                // 添加事件到当前组
+                if (currentGroup != null)
+                {
+                    currentGroup.Items.Add(new OutputEvent
+                    {
+                        Type = evt.Type,
+                        Title = evt.Title,
+                        Content = evt.Content ?? string.Empty,
+                        ItemType = evt.ItemType,
+                        Usage = evt.Usage != null ? new TokenUsage
+                        {
+                            InputTokens = evt.Usage.InputTokens,
+                            CachedInputTokens = evt.Usage.CachedInputTokens,
+                            OutputTokens = evt.Usage.OutputTokens,
+                            TotalTokens = evt.Usage.InputTokens + evt.Usage.CachedInputTokens + evt.Usage.OutputTokens
+                        } : null
+                    });
+
+                    // 如果是工具结束事件，标记组完成
+                    if (evt.Type == "tool_result" || evt.Type == "tool_finish")
+                    {
+                        currentGroup.IsCompleted = true;
+                    }
                 }
             }
-        }).ToList();
+            else
+            {
+                // 保存上一个工具组
+                if (currentGroup != null && currentGroup.Items.Any())
+                {
+                    groups.Add(currentGroup);
+                    currentGroup = null;
+                }
+
+                // 非工具事件，创建单独的不可折叠组
+                groups.Add(new OutputEventGroup
+                {
+                    Id = $"event_{groups.Count}",
+                    Kind = "single",
+                    Title = evt.Title,
+                    IsCompleted = true,
+                    IsCollapsible = false,
+                    Items = new List<OutputEvent>
+                    {
+                        new OutputEvent
+                        {
+                            Type = evt.Type,
+                            Title = evt.Title,
+                            Content = evt.Content ?? string.Empty,
+                            ItemType = evt.ItemType,
+                            Usage = evt.Usage != null ? new TokenUsage
+                            {
+                                InputTokens = evt.Usage.InputTokens,
+                                CachedInputTokens = evt.Usage.CachedInputTokens,
+                                OutputTokens = evt.Usage.OutputTokens,
+                                TotalTokens = evt.Usage.InputTokens + evt.Usage.CachedInputTokens + evt.Usage.OutputTokens
+                            } : null
+                        }
+                    }
+                });
+            }
+        }
+
+        // 添加最后一个组
+        if (currentGroup != null && currentGroup.Items.Any())
+        {
+            groups.Add(currentGroup);
+        }
+
+        return groups;
+    }
+
+    /// <summary>
+    /// 处理输出事件组的折叠/展开
+    /// </summary>
+    private void HandleToggleOutputGroup((string groupId, bool defaultOpen) args)
+    {
+        if (_openOutputGroups.Contains(args.groupId))
+        {
+            _openOutputGroups.Remove(args.groupId);
+        }
+        else
+        {
+            _openOutputGroups.Add(args.groupId);
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// 判断输出事件组是否展开
+    /// </summary>
+    private bool IsOutputGroupOpen(OutputEventGroup group)
+    {
+        // 如果没有被手动操作过，根据完成状态决定
+        if (!_openOutputGroups.Contains(group.Id))
+        {
+            // 未完成的组默认展开
+            return !group.IsCompleted;
+        }
+        // 已手动操作过的组,保持用户选择的状态
+        return _openOutputGroups.Contains(group.Id);
     }
 
     private async Task Reload()
@@ -798,6 +913,22 @@
     private void GoBack()
     {
         NavigationManager.NavigateTo("/");
+    }
+
+    /// <summary>
+    /// 对文件路径进行 URL 编码，保留路径分隔符
+    /// </summary>
+    private string EncodePathForUrl(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return string.Empty;
+        }
+
+        // 将路径按斜杠分割，对每个部分分别编码，然后重新组合
+        var parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var encodedParts = parts.Select(p => Uri.EscapeDataString(p));
+        return string.Join("/", encodedParts);
     }
 
     private class SharedSessionInfo
