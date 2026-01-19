@@ -247,6 +247,10 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadAccessToken();
+        if (!string.IsNullOrEmpty(_accessToken))
+        {
+            await EnsureShareCookieAsync();
+        }
         
         if (string.IsNullOrEmpty(_accessToken))
         {
@@ -267,6 +271,21 @@
         catch
         {
             _accessToken = string.Empty;
+        }
+    }
+
+    private async Task EnsureShareCookieAsync()
+    {
+        try
+        {
+            // 为 iframe 及其资源请求设置 Cookie
+            var cookieExpires = DateTime.UtcNow.AddHours(24).ToString("R");
+            await JSRuntime.InvokeVoidAsync("eval",
+                $"document.cookie = 'share_token_{ShareCode}={_accessToken}; path=/; expires={cookieExpires}; SameSite=Lax'");
+        }
+        catch
+        {
+            // 忽略 Cookie 写入失败
         }
     }
 

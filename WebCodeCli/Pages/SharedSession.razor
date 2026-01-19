@@ -234,6 +234,12 @@
                     // 保存访问令牌到 sessionStorage
                     await JSRuntime.InvokeVoidAsync("sessionStorage.setItem", $"share_token_{ShareCode}", result.AccessToken);
                     
+                    // 同时设置 Cookie，以便 iframe 中的资源请求可以自动携带令牌
+                    // Cookie 有效期 24 小时
+                    var cookieExpires = DateTime.UtcNow.AddHours(24).ToString("R");
+                    await JSRuntime.InvokeVoidAsync("eval", 
+                        $"document.cookie = 'share_token_{ShareCode}={result.AccessToken}; path=/; expires={cookieExpires}; SameSite=Lax'");
+                    
                     // 跳转到共享工作区
                     NavigationManager.NavigateTo($"/shared-workspace/{ShareCode}");
                 }

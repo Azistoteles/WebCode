@@ -91,6 +91,21 @@ public class ShareController : ControllerBase
                 return Unauthorized(new { error = result.ErrorMessage });
             }
 
+            // 设置 Cookie 以便 iframe 和其他资源请求可以自动携带令牌
+            if (!string.IsNullOrEmpty(result.AccessToken))
+            {
+                Response.Cookies.Append($"share_token_{shareCode}", result.AccessToken, new CookieOptions
+                {
+                    HttpOnly = true,
+                    Secure = Request.IsHttps,
+                    SameSite = SameSiteMode.Lax,
+                    MaxAge = TimeSpan.FromHours(24),
+                    Path = "/" // 确保 Cookie 对所有路径有效
+                });
+                
+                _logger.LogInformation("已设置分享Cookie: share_token_{ShareCode}", shareCode);
+            }
+
             return Ok(result);
         }
         catch (Exception ex)
@@ -233,7 +248,7 @@ public class ShareController : ControllerBase
     /// <summary>
     /// 获取共享工作区的文件内容
     /// GET /api/share/{shareCode}/workspace/file/{**filePath}
-    /// 支持通过请求头 X-Share-Token 或查询参数 token 传递访问令牌
+    /// 支持通过请求头 X-Share-Token、查询参数 token 或 Cookie 传递访问令牌
     /// </summary>
     [HttpGet("{shareCode}/workspace/file/{**filePath}")]
     public async Task<IActionResult> GetSharedWorkspaceFile(
@@ -244,11 +259,34 @@ public class ShareController : ControllerBase
     {
         try
         {
-            // 优先使用请求头中的令牌，其次使用查询参数
-            var accessToken = headerToken ?? queryToken;
+            // 优先使用请求头中的令牌，其次使用查询参数，最后使用 Cookie
+            string? accessToken = headerToken;
             
             if (string.IsNullOrWhiteSpace(accessToken))
             {
+                accessToken = queryToken;
+            }
+            
+            // 如果没有从请求头或查询参数获取到令牌，尝试从 Cookie 获取
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                var cookieName = $"share_token_{shareCode}";
+                if (Request.Cookies.TryGetValue(cookieName, out var cookieToken))
+                {
+                    accessToken = Uri.UnescapeDataString(cookieToken);
+                    _logger.LogDebug("从Cookie获取到访问令牌: {CookieName}", cookieName);
+                }
+                else
+                {
+                    _logger.LogDebug("未找到Cookie: {CookieName}, 可用Cookies: {Cookies}", 
+                        cookieName, string.Join(", ", Request.Cookies.Keys));
+                }
+            }
+            
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                _logger.LogWarning("获取文件失败：缺少访问令牌, ShareCode={ShareCode}, FilePath={FilePath}", 
+                    shareCode, filePath);
                 return Unauthorized(new { error = "缺少访问令牌" });
             }
 
@@ -256,6 +294,7 @@ public class ShareController : ControllerBase
             var isValid = await _shareService.ValidateAccessTokenAsync(shareCode, accessToken);
             if (!isValid)
             {
+                _logger.LogWarning("获取文件失败：访问令牌无效, ShareCode={ShareCode}", shareCode);
                 return Unauthorized(new { error = "访问令牌无效或已过期" });
             }
 
