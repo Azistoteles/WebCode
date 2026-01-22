@@ -28,6 +28,7 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     [Inject] private NavigationManager NavigationManager { get; set; } = default!;
     [Inject] private ISessionHistoryManager SessionHistoryManager { get; set; } = default!;
     [Inject] private ILocalizationService L { get; set; } = default!;
+    [Inject] private WebCodeCli.Domain.Domain.Service.ISkillService SkillService { get; set; } = default!;
     
     #endregion
     
@@ -152,6 +153,11 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     private string _sessionId = Guid.NewGuid().ToString();
     private bool _showQuickActions = false;
     
+    // Skill技能选择器相关
+    private List<WebCodeCli.Domain.Domain.Model.SkillItem> _skills = new();
+    private bool _showSkillPicker = false;
+    private string _skillFilter = string.Empty;
+    
     // 快捷操作项
     private List<QuickActionItem> _quickActionItems = new();
     
@@ -184,6 +190,194 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         StateHasChanged();
     }
     
+    #region Skill技能选择器
+    
+    /// <summary>
+    /// 加载技能列表
+    /// </summary>
+    private async Task LoadSkillsAsync()
+    {
+        try
+        {
+            _skills = await SkillService.GetSkillsAsync();
+            Console.WriteLine($"已加载 {_skills.Count} 个技能");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"加载技能失败: {ex.Message}");
+            _skills = new List<WebCodeCli.Domain.Domain.Model.SkillItem>();
+        }
+    }
+    
+    /// <summary>
+    /// 输入框内容变化事件（用于触发技能选择器）
+    /// </summary>
+    private void HandleInputChange()
+    {
+        // 检查是否触发技能选择器（/ 符号）
+        var skillFilterText = GetSkillFilterFromInput();
+        if (skillFilterText != null && _skills.Any())
+        {
+            // 显示技能选择器并根据 / 后的内容进行筛选
+            if (!_showSkillPicker)
+            {
+                ShowSkillPicker();
+            }
+            // 更新筛选条件为 / 后面的内容
+            _skillFilter = skillFilterText;
+        }
+        else if (_showSkillPicker)
+        {
+            CloseSkillPicker();
+        }
+        
+        StateHasChanged();
+    }
+    
+    /// <summary>
+    /// 从输入消息中提取技能筛选文本（/ 后面的内容）
+    /// 返回 null 表示没有触发技能选择器
+    /// </summary>
+    private string? GetSkillFilterFromInput()
+    {
+        if (string.IsNullOrEmpty(_inputMessage))
+            return null;
+            
+        // 查找最后一个 / 的位置
+        var lastSlashIndex = _inputMessage.LastIndexOf('/');
+        if (lastSlashIndex < 0)
+            return null;
+            
+        // 检查 / 前面是否是空格或者在开头（确保是技能触发符）
+        if (lastSlashIndex > 0 && !char.IsWhiteSpace(_inputMessage[lastSlashIndex - 1]))
+            return null;
+            
+        // 获取 / 后面的内容（可能为空，表示刚输入 /）
+        var filterText = _inputMessage.Substring(lastSlashIndex + 1);
+        
+        // 如果 / 后面包含空格，说明技能输入已结束
+        if (filterText.Contains(' '))
+            return null;
+            
+        return filterText;
+    }
+    
+    /// <summary>
+    /// 显示技能选择器
+    /// </summary>
+    private void ShowSkillPicker()
+    {
+        _showSkillPicker = true;
+        _showQuickActions = false; // 关闭快捷操作面板
+        StateHasChanged();
+    }
+    
+    /// <summary>
+    /// 关闭技能选择器
+    /// </summary>
+    private void CloseSkillPicker()
+    {
+        _showSkillPicker = false;
+        _skillFilter = string.Empty;
+        StateHasChanged();
+    }
+    
+    /// <summary>
+    /// 选择技能
+    /// </summary>
+    private void SelectSkill(WebCodeCli.Domain.Domain.Model.SkillItem skill)
+    {
+        var skillCommand = $"/{skill.Name} ";
+        
+        // 将技能命令插入到输入框，替换当前的 /xxx 部分
+        if (string.IsNullOrEmpty(_inputMessage))
+        {
+            _inputMessage = skillCommand;
+        }
+        else
+        {
+            // 查找最后一个 / 的位置并替换 / 及其后面的内容
+            var lastSlashIndex = _inputMessage.LastIndexOf('/');
+            if (lastSlashIndex >= 0)
+            {
+                _inputMessage = _inputMessage.Substring(0, lastSlashIndex) + skillCommand;
+            }
+            else
+            {
+                _inputMessage += skillCommand;
+            }
+        }
+        
+        CloseSkillPicker();
+        
+        // 聚焦到输入框
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(100);
+            await JSRuntime.InvokeVoidAsync("eval", "document.getElementById('mobile-input-message')?.focus()");
+        });
+    }
+    
+    /// <summary>
+    /// 获取过滤后的技能列表
+    /// </summary>
+    private List<WebCodeCli.Domain.Domain.Model.SkillItem> GetFilteredSkills()
+    {
+        var filtered = _skills.AsEnumerable();
+        
+        // 根据右上角选择的工具自动过滤技能来源
+        var selectedTool = _availableTools.FirstOrDefault(t => t.Id == _selectedToolId);
+        if (selectedTool != null)
+        {
+            if (selectedTool.Id.Contains("claude", StringComparison.OrdinalIgnoreCase))
+            {
+                filtered = filtered.Where(s => s.Source.Equals("claude", StringComparison.OrdinalIgnoreCase));
+            }
+            else if (selectedTool.Id.Contains("codex", StringComparison.OrdinalIgnoreCase))
+            {
+                filtered = filtered.Where(s => s.Source.Equals("codex", StringComparison.OrdinalIgnoreCase));
+            }
+        }
+        
+        // 用户输入的搜索词过滤（仅搜索名称和描述）
+        if (!string.IsNullOrWhiteSpace(_skillFilter))
+        {
+            filtered = filtered.Where(s => 
+                s.Name.Contains(_skillFilter, StringComparison.OrdinalIgnoreCase) ||
+                s.Description.Contains(_skillFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return filtered.ToList();
+    }
+    
+    /// <summary>
+    /// 获取技能图标颜色
+    /// </summary>
+    private string GetSkillIconColor(string source)
+    {
+        return source.ToLower() switch
+        {
+            "claude" => "text-orange-500",
+            "codex" => "text-blue-500",
+            _ => "text-gray-500"
+        };
+    }
+    
+    /// <summary>
+    /// 获取技能徽章样式
+    /// </summary>
+    private string GetSkillBadgeClass(string source)
+    {
+        return source.ToLower() switch
+        {
+            "claude" => "bg-orange-100 text-orange-700",
+            "codex" => "bg-blue-100 text-blue-700",
+            _ => "bg-gray-100 text-gray-700"
+        };
+    }
+    
+    #endregion
+    
     private async Task SendMessage()
     {
         if (string.IsNullOrWhiteSpace(_inputMessage) || _isLoading)
@@ -192,6 +386,7 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         var userMessage = _inputMessage.Trim();
         _inputMessage = string.Empty;
         _showQuickActions = false;
+        _showSkillPicker = false; // 关闭技能选择器
         
         // 添加用户消息
         _messages.Add(new ChatMessage
@@ -980,7 +1175,8 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
             if (fileBytes != null)
             {
                 var content = Encoding.UTF8.GetString(fileBytes);
-                await _codePreviewModal.ShowAsync(_selectedFileNode.Name, content, _selectedFileNode.Extension);
+                // 正确的参数顺序: fileName, filePath, content, fileBytes, sessionId
+                await _codePreviewModal.ShowAsync(_selectedFileNode.Name, _selectedFileNode.Path, content, fileBytes, _sessionId);
             }
         }
         catch { }
@@ -1022,7 +1218,9 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         if (_selectedFileNode == null) return;
         
         _selectedHtmlFile = _selectedFileNode.Path;
-        _htmlPreviewUrl = $"/api/preview/{_sessionId}/{_selectedFileNode.Path}";
+        // 使用与PC端一致的API路径格式: /api/workspace/{sessionId}/files/{filePath}
+        var encodedPath = Uri.EscapeDataString(_selectedFileNode.Path.Replace("\\", "/"));
+        _htmlPreviewUrl = $"/api/workspace/{_sessionId}/files/{encodedPath}";
         SwitchTab("preview");
         CloseFileActionSheet();
     }
@@ -1129,7 +1327,9 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     {
         if (!string.IsNullOrEmpty(_selectedHtmlFile))
         {
-            _htmlPreviewUrl = $"/api/preview/{_sessionId}/{_selectedHtmlFile}?t={DateTime.Now.Ticks}";
+            // 使用与PC端一致的API路径格式
+            var encodedPath = Uri.EscapeDataString(_selectedHtmlFile.Replace("\\", "/"));
+            _htmlPreviewUrl = $"/api/workspace/{_sessionId}/files/{encodedPath}?_t={DateTime.Now.Ticks}";
             StateHasChanged();
         }
     }
@@ -1263,6 +1463,9 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         
         // 加载工具列表
         LoadAvailableTools();
+        
+        // 加载技能列表
+        await LoadSkillsAsync();
         
         // 加载最近会话
         await LoadSessions();
