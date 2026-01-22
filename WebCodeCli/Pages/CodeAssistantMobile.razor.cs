@@ -422,7 +422,9 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         {
             Role = "user",
             Content = userMessage,
-            CreatedAt = DateTime.Now
+            CreatedAt = DateTime.Now,
+            CliToolId = _selectedToolId,
+            IsCompleted = true
         });
         
         _isLoading = true;
@@ -450,7 +452,9 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
                         Content = string.Empty,
                         HasError = true,
                         ErrorMessage = chunk.ErrorMessage ?? chunk.Content,
-                        CreatedAt = DateTime.Now
+                        CreatedAt = DateTime.Now,
+                        CliToolId = _selectedToolId,
+                        IsCompleted = true
                     });
                     break;
                 }
@@ -475,6 +479,7 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
                             Role = "assistant",
                             Content = finalContent,
                             CreatedAt = DateTime.Now,
+                            CliToolId = _selectedToolId,
                             IsCompleted = true
                         });
                     }
@@ -501,9 +506,6 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
                     await InvokeAsync(StateHasChanged);
                 }
             }
-            
-            // 保存会话
-            await SaveCurrentSession();
         }
         catch (Exception ex)
         {
@@ -513,7 +515,9 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
                 Content = string.Empty,
                 HasError = true,
                 ErrorMessage = $"{T("codeAssistant.errorOccurred")}: {ex.Message}",
-                CreatedAt = DateTime.Now
+                CreatedAt = DateTime.Now,
+                CliToolId = _selectedToolId,
+                IsCompleted = true
             });
         }
         finally
@@ -540,6 +544,9 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
             _currentAssistantMessage = string.Empty;
             StateHasChanged();
             await ScrollToBottom();
+
+            // 自动保存当前会话
+            await SaveCurrentSession();
         }
     }
     
@@ -580,8 +587,15 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     private bool _isJsonlOutputActive = false;
     private string _activeThreadId = string.Empty;
     private string _rawOutput = string.Empty;
+    private bool _disposed = false;
     private string _jsonlPendingBuffer = string.Empty;
     private StringBuilder? _jsonlAssistantMessageBuilder;
+
+    // 输出结果（Tab=输出结果）持久化
+    private System.Threading.Timer? _outputStateSaveTimer;
+    private readonly object _outputStateSaveLock = new object();
+    private bool _hasPendingOutputStateSave = false;
+    private const int OutputStateSaveDebounceMs = 800;
     
     private const int InitialDisplayCount = 20;
     private int _displayedEventCount = InitialDisplayCount;
@@ -1178,6 +1192,204 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     private void UpdateOutputRaw(string content)
     {
         _rawOutput = content;
+        QueueSaveOutputState();
+    }
+
+    private async Task<bool> IsIndexedDbReadyAsync()
+    {
+        try
+        {
+            if (await JSRuntime.InvokeAsync<bool>("webCliIndexedDB.isReady"))
+            {
+                return true;
+            }
+
+            var retries = 30;
+            while (retries-- > 0)
+            {
+                await Task.Delay(100);
+                if (await JSRuntime.InvokeAsync<bool>("webCliIndexedDB.isReady"))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void QueueSaveOutputState(bool forceImmediate = false)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        lock (_outputStateSaveLock)
+        {
+            _hasPendingOutputStateSave = true;
+
+            _outputStateSaveTimer?.Dispose();
+
+            var dueTime = forceImmediate ? 1 : OutputStateSaveDebounceMs;
+            _outputStateSaveTimer = new System.Threading.Timer(async _ =>
+            {
+                if (_disposed) return;
+
+                lock (_outputStateSaveLock)
+                {
+                    if (!_hasPendingOutputStateSave)
+                    {
+                        return;
+                    }
+                    _hasPendingOutputStateSave = false;
+                }
+
+                await InvokeAsync(async () => await SaveOutputStateAsync());
+            }, null, dueTime, Timeout.Infinite);
+        }
+    }
+
+    private OutputPanelState BuildOutputPanelStateSnapshot(string sessionId)
+    {
+        var state = new OutputPanelState
+        {
+            SessionId = sessionId,
+            RawOutput = _rawOutput ?? string.Empty,
+            IsJsonlOutputActive = _isJsonlOutputActive,
+            ActiveThreadId = _activeThreadId ?? string.Empty,
+            UpdatedAt = DateTime.Now,
+            JsonlEvents = new List<OutputJsonlEvent>()
+        };
+
+        foreach (var evt in _jsonlEvents)
+        {
+            state.JsonlEvents.Add(new OutputJsonlEvent
+            {
+                Type = evt.Type,
+                Title = evt.Title,
+                Content = evt.Content,
+                ItemType = evt.ItemType,
+                IsUnknown = evt.IsUnknown,
+                Usage = evt.Usage == null
+                    ? null
+                    : new OutputJsonlUsageDetail
+                    {
+                        InputTokens = evt.Usage.InputTokens,
+                        CachedInputTokens = evt.Usage.CachedInputTokens,
+                        OutputTokens = evt.Usage.OutputTokens
+                    }
+            });
+        }
+
+        return state;
+    }
+
+    private async Task SaveOutputStateAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var sessionId = _sessionId;
+
+        try
+        {
+            if (!await IsIndexedDbReadyAsync())
+            {
+                return;
+            }
+
+            var state = BuildOutputPanelStateSnapshot(sessionId);
+            await JSRuntime.InvokeVoidAsync("webCliIndexedDB.saveSessionOutput", state);
+        }
+        catch
+        {
+            // 持久化失败不影响主流程
+        }
+    }
+
+    private async Task LoadOutputStateAsync(string sessionId)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!await IsIndexedDbReadyAsync())
+            {
+                return;
+            }
+
+            var state = await JSRuntime.InvokeAsync<OutputPanelState?>("webCliIndexedDB.getSessionOutput", sessionId);
+            if (state == null)
+            {
+                return;
+            }
+
+            _rawOutput = state.RawOutput ?? string.Empty;
+            _isJsonlOutputActive = state.IsJsonlOutputActive;
+            _activeThreadId = state.ActiveThreadId ?? string.Empty;
+
+            _jsonlEvents.Clear();
+            if (state.JsonlEvents != null)
+            {
+                foreach (var evt in state.JsonlEvents)
+                {
+                    _jsonlEvents.Add(new JsonlDisplayItem
+                    {
+                        Type = evt.Type,
+                        Title = evt.Title,
+                        Content = evt.Content,
+                        ItemType = evt.ItemType,
+                        IsUnknown = evt.IsUnknown,
+                        Usage = evt.Usage == null
+                            ? null
+                            : new JsonlUsageDetail
+                            {
+                                InputTokens = evt.Usage.InputTokens,
+                                CachedInputTokens = evt.Usage.CachedInputTokens,
+                                OutputTokens = evt.Usage.OutputTokens
+                            }
+                    });
+                }
+            }
+
+            ResetEventDisplayCount();
+        }
+        catch
+        {
+            // 恢复失败不影响主流程
+        }
+    }
+
+    private async Task DeleteOutputStateAsync(string sessionId)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!await IsIndexedDbReadyAsync())
+            {
+                return;
+            }
+
+            await JSRuntime.InvokeVoidAsync("webCliIndexedDB.deleteSessionOutput", sessionId);
+        }
+        catch
+        {
+            // 删除失败不影响主流程
+        }
     }
     
     private CancellationTokenSource? _cancellationTokenSource;
@@ -1224,12 +1436,24 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     
     private async Task LoadSessions()
     {
+        if (_isLoadingSessions)
+        {
+            return;
+        }
+
         _isLoadingSessions = true;
         StateHasChanged();
         
         try
         {
             _sessions = await SessionHistoryManager.LoadSessionsAsync();
+
+            foreach (var session in _sessions)
+            {
+                session.IsWorkspaceValid = SessionHistoryManager.ValidateWorkspacePath(session.WorkspacePath);
+            }
+
+            _sessions = _sessions.OrderByDescending(s => s.UpdatedAt).ToList();
         }
         catch { }
         finally
@@ -1255,7 +1479,32 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         _breadcrumbs.Clear();
         _selectedHtmlFile = string.Empty;
         _htmlPreviewUrl = string.Empty;
-        
+
+        var workspacePath = CliExecutorService.GetSessionWorkspacePath(_sessionId);
+        if (!Directory.Exists(workspacePath))
+        {
+            Directory.CreateDirectory(workspacePath);
+        }
+
+        _currentSession = new SessionHistory
+        {
+            SessionId = _sessionId,
+            Title = "新会话",
+            CreatedAt = DateTime.Now,
+            UpdatedAt = DateTime.Now,
+            WorkspacePath = workspacePath,
+            ToolId = _selectedToolId,
+            Messages = new List<ChatMessage>(),
+            IsWorkspaceValid = true
+        };
+
+        try
+        {
+            await SessionHistoryManager.SaveSessionImmediateAsync(_currentSession);
+            await LoadSessions();
+        }
+        catch { }
+
         StateHasChanged();
     }
     
@@ -1275,12 +1524,44 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
             var session = await SessionHistoryManager.GetSessionAsync(sessionId);
             if (session != null)
             {
+                session.IsWorkspaceValid = SessionHistoryManager.ValidateWorkspacePath(session.WorkspacePath);
+
                 _currentSession = session;
                 _sessionId = session.SessionId;
-                _messages = session.Messages.ToList();
-                
-                // 加载工作区文件
-                await LoadWorkspaceFiles();
+                _messages = new List<ChatMessage>(session.Messages);
+
+                if (!string.IsNullOrEmpty(session.ToolId) &&
+                    _availableTools.Any(t => t.Id == session.ToolId))
+                {
+                    _selectedToolId = session.ToolId;
+                }
+                else if (_availableTools.Any() && string.IsNullOrEmpty(_selectedToolId))
+                {
+                    _selectedToolId = _availableTools.First().Id;
+                }
+
+                _rawOutput = string.Empty;
+                _jsonlEvents.Clear();
+                _jsonlPendingBuffer = string.Empty;
+                _activeThreadId = string.Empty;
+                _isJsonlOutputActive = false;
+                _jsonlAssistantMessageBuilder = null;
+                _currentAssistantMessage = string.Empty;
+
+                await LoadOutputStateAsync(_sessionId);
+
+                if (session.IsWorkspaceValid)
+                {
+                    await LoadWorkspaceFiles();
+                }
+                else
+                {
+                    _workspaceFiles.Clear();
+                    _currentFolderItems.Clear();
+                    _breadcrumbs.Clear();
+                    _selectedHtmlFile = string.Empty;
+                    _htmlPreviewUrl = string.Empty;
+                }
             }
         }
         catch { }
@@ -1313,12 +1594,30 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         
         try
         {
-            await SessionHistoryManager.DeleteSessionAsync(_sessionToDelete.SessionId);
-            _sessions.RemoveAll(s => s.SessionId == _sessionToDelete.SessionId);
-            
-            if (_currentSession?.SessionId == _sessionToDelete.SessionId)
+            var deletedSessionId = _sessionToDelete.SessionId;
+            var deletedCurrentSession = _currentSession?.SessionId == deletedSessionId;
+
+            await SessionHistoryManager.DeleteSessionAsync(deletedSessionId);
+            await DeleteOutputStateAsync(deletedSessionId);
+
+            try
             {
-                await CreateNewSession();
+                CliExecutorService.CleanupSessionWorkspace(deletedSessionId);
+            }
+            catch { }
+
+            await LoadSessions();
+
+            if (deletedCurrentSession)
+            {
+                if (_sessions.Any())
+                {
+                    await LoadSessionFromDrawer(_sessions.First().SessionId);
+                }
+                else
+                {
+                    await CreateNewSession();
+                }
             }
         }
         catch { }
@@ -1336,25 +1635,52 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         {
             if (!_messages.Any())
             {
+                QueueSaveOutputState(forceImmediate: true);
                 return;
             }
 
-            var firstUserMessage = _messages.FirstOrDefault(m => m.Role == "user")?.Content;
-            var title = !string.IsNullOrWhiteSpace(firstUserMessage)
-                ? SessionHistoryManager.GenerateSessionTitle(firstUserMessage)
-                : T("codeAssistant.newSession");
+            var workspacePath = CliExecutorService.GetSessionWorkspacePath(_sessionId);
 
-            var session = new SessionHistory
+            if (_currentSession == null)
             {
-                SessionId = _sessionId,
-                Title = title,
-                Messages = _messages,
-                CreatedAt = _currentSession?.CreatedAt ?? DateTime.Now,
-                UpdatedAt = DateTime.Now
-            };
+                _currentSession = new SessionHistory
+                {
+                    SessionId = _sessionId,
+                    Title = "新会话",
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now,
+                    WorkspacePath = workspacePath,
+                    ToolId = _selectedToolId,
+                    Messages = new List<ChatMessage>(_messages),
+                    IsWorkspaceValid = true
+                };
+
+                var firstUserMessage = _messages.FirstOrDefault(m => m.Role == "user");
+                if (firstUserMessage != null)
+                {
+                    _currentSession.Title = SessionHistoryManager.GenerateSessionTitle(firstUserMessage.Content);
+                }
+            }
+            else
+            {
+                _currentSession.Messages = new List<ChatMessage>(_messages);
+                _currentSession.UpdatedAt = DateTime.Now;
+                _currentSession.ToolId = _selectedToolId;
+                _currentSession.WorkspacePath = workspacePath;
+                _currentSession.IsWorkspaceValid = true;
+
+                if (_currentSession.Title == "新会话")
+                {
+                    var firstUserMessage = _messages.FirstOrDefault(m => m.Role == "user");
+                    if (firstUserMessage != null)
+                    {
+                        _currentSession.Title = SessionHistoryManager.GenerateSessionTitle(firstUserMessage.Content);
+                    }
+                }
+            }
             
-            await SessionHistoryManager.SaveSessionAsync(session);
-            _currentSession = session;
+            await SessionHistoryManager.SaveSessionImmediateAsync(_currentSession);
+            QueueSaveOutputState(forceImmediate: true);
         }
         catch { }
     }
@@ -1998,6 +2324,8 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
+        _outputStateSaveTimer?.Dispose();
         // 清理资源
     }
     
