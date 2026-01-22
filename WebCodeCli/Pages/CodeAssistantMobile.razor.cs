@@ -137,6 +137,7 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         _currentLanguage = language;
         await LoadTranslationsAsync();
         InitializeTabs();
+        InitializeQuickActions();
         StateHasChanged();
     }
     
@@ -152,19 +153,24 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     private bool _showQuickActions = false;
     
     // 快捷操作项
-    private readonly List<QuickActionItem> _quickActionItems = new()
-    {
-        new("generate", "生成代码", "💻"),
-        new("explain", "解释代码", "📖"),
-        new("optimize", "优化代码", "⚡"),
-        new("debug", "调试帮助", "🔧"),
-        new("test", "生成测试", "🧪"),
-        new("docs", "生成文档", "📝"),
-        new("refactor", "重构代码", "🔄"),
-        new("review", "代码审查", "👀")
-    };
+    private List<QuickActionItem> _quickActionItems = new();
     
     private record QuickActionItem(string Id, string Title, string Icon);
+    
+    private void InitializeQuickActions()
+    {
+        _quickActionItems = new List<QuickActionItem>
+        {
+            new("generate", T("codeAssistant.quickAction.generate"), "💻"),
+            new("explain", T("codeAssistant.quickAction.explain"), "📖"),
+            new("optimize", T("codeAssistant.quickAction.optimize"), "⚡"),
+            new("debug", T("codeAssistant.quickAction.debug"), "🔧"),
+            new("test", T("codeAssistant.quickAction.test"), "🧪"),
+            new("docs", T("codeAssistant.quickAction.docs"), "📝"),
+            new("refactor", T("codeAssistant.quickAction.refactor"), "🔄"),
+            new("review", T("codeAssistant.quickAction.review"), "👀")
+        };
+    }
     
     private void ToggleQuickActions()
     {
@@ -173,7 +179,7 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     
     private void OnQuickActionClick(QuickActionItem action)
     {
-        _inputMessage = $"请帮我{action.Title}: ";
+        _inputMessage = T("codeAssistant.helpWith", ("action", action.Title));
         _showQuickActions = false;
         StateHasChanged();
     }
@@ -264,7 +270,7 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
                 Role = "assistant",
                 Content = string.Empty,
                 HasError = true,
-                ErrorMessage = $"发生错误: {ex.Message}",
+                ErrorMessage = $"{T("codeAssistant.errorOccurred")}: {ex.Message}",
                 CreatedAt = DateTime.Now
             });
         }
@@ -723,7 +729,7 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
             var session = new SessionHistory
             {
                 SessionId = _sessionId,
-                Title = _messages.FirstOrDefault()?.Content?.Take(50).ToString() ?? "新会话",
+                Title = _messages.FirstOrDefault()?.Content?.Take(50).ToString() ?? T("codeAssistant.newSession"),
                 Messages = _messages,
                 CreatedAt = _currentSession?.CreatedAt ?? DateTime.Now,
                 UpdatedAt = DateTime.Now
@@ -1231,6 +1237,7 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         catch { }
         
         InitializeTabs();
+        InitializeQuickActions();
         
         // 检查认证状态
         if (AuthenticationService.IsAuthenticationEnabled())
