@@ -701,14 +701,17 @@
                         <h3 class="text-sm font-bold text-gray-800">@T("codeAssistant.selectTool")</h3>
                     </div>
                     <div class="p-4">
-                        <select @bind="_selectedToolId" 
-                                @bind:after="OnToolChanged"
-                                class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            @foreach (var tool in _availableTools)
-                            {
-                                <option value="@tool.Id">@tool.Name - @tool.Description</option>
-                            }
-                        </select>
+                        <button @onclick="OpenToolPicker"
+                                class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <span class="truncate text-gray-800">@GetSelectedToolLabel()</span>
+                            <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+                        @if (!string.IsNullOrWhiteSpace(GetSelectedToolDescription()))
+                        {
+                            <p class="mt-2 text-xs text-gray-500">@GetSelectedToolDescription()</p>
+                        }
                     </div>
                 </div>
                 
@@ -718,14 +721,13 @@
                         <h3 class="text-sm font-bold text-gray-800">@T("codeAssistant.language")</h3>
                     </div>
                     <div class="p-4">
-                        <select @bind="_currentLanguage" 
-                                @bind:after="OnMobileLanguageChanged"
-                                class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            @foreach (var lang in _supportedLanguages)
-                            {
-                                <option value="@lang.Code">@lang.NativeName (@lang.Name)</option>
-                            }
-                        </select>
+                        <button @onclick="OpenLanguagePicker"
+                                class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <span class="truncate text-gray-800">@GetSelectedLanguageLabel()</span>
+                            <svg class="w-4 h-4 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
                     </div>
                 </div>
                 
@@ -836,6 +838,85 @@
                         <div class="animate-spin h-4 w-4 border-2 border-white rounded-full border-t-transparent"></div>
                     }
                     @T("codeAssistant.create")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- 工具选择器 -->
+@if (_showToolPicker)
+{
+    <div class="fixed inset-0 z-[70] flex items-end justify-center" @onclick="CloseToolPicker">
+        <div class="absolute inset-0 bg-black/50"></div>
+        <div class="relative w-full max-w-lg bg-white rounded-t-3xl shadow-2xl safe-area-bottom" @onclick:stopPropagation="true">
+            <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-2"></div>
+            <div class="px-4 py-3 border-b border-gray-100">
+                <p class="text-sm font-semibold text-gray-800">@T("codeAssistant.selectTool")</p>
+            </div>
+            <div class="max-h-72 overflow-y-auto">
+                @foreach (var tool in _availableTools)
+                {
+                    <button @onclick="() => SelectTool(tool)"
+                            class="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-medium text-gray-800">@tool.Name</span>
+                            @if (tool.Id == _selectedToolId)
+                            {
+                                <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                </svg>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(tool.Description))
+                        {
+                            <p class="text-xs text-gray-500 mt-1 line-clamp-2">@tool.Description</p>
+                        }
+                    </button>
+                }
+            </div>
+            <div class="px-4 pb-4">
+                <button @onclick="CloseToolPicker"
+                        class="w-full py-3 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-xl font-medium text-gray-700 transition-colors">
+                    @T("common.cancel")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- 语言选择器 -->
+@if (_showLanguagePicker)
+{
+    <div class="fixed inset-0 z-[70] flex items-end justify-center" @onclick="CloseLanguagePicker">
+        <div class="absolute inset-0 bg-black/50"></div>
+        <div class="relative w-full max-w-lg bg-white rounded-t-3xl shadow-2xl safe-area-bottom" @onclick:stopPropagation="true">
+            <div class="w-12 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-2"></div>
+            <div class="px-4 py-3 border-b border-gray-100">
+                <p class="text-sm font-semibold text-gray-800">@T("codeAssistant.language")</p>
+            </div>
+            <div class="max-h-72 overflow-y-auto">
+                @foreach (var lang in _supportedLanguages)
+                {
+                    <button @onclick="() => SelectLanguage(lang)"
+                            class="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 active:bg-gray-100 transition-colors">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-medium text-gray-800">@lang.NativeName</span>
+                            <span class="text-xs text-gray-500">@lang.Name</span>
+                            @if (lang.Code == _currentLanguage)
+                            {
+                                <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                </svg>
+                            }
+                        </div>
+                    </button>
+                }
+            </div>
+            <div class="px-4 pb-4">
+                <button @onclick="CloseLanguagePicker"
+                        class="w-full py-3 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 rounded-xl font-medium text-gray-700 transition-colors">
+                    @T("common.cancel")
                 </button>
             </div>
         </div>

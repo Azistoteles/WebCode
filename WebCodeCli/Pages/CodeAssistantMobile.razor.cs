@@ -1765,6 +1765,10 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
     private CodePreviewModal _codePreviewModal = default!;
     private EnvironmentVariableConfigModal _envConfigModal = default!;
     private ProgressTracker _progressTracker = default!;
+
+    // 设置页选择器
+    private bool _showToolPicker = false;
+    private bool _showLanguagePicker = false;
     
     private async Task OpenEnvConfig()
     {
@@ -1773,6 +1777,60 @@ public partial class CodeAssistantMobile : ComponentBase, IAsyncDisposable
         {
             await _envConfigModal.ShowAsync(selectedTool);
         }
+    }
+
+    private void OpenToolPicker()
+    {
+        _showToolPicker = true;
+    }
+
+    private void CloseToolPicker()
+    {
+        _showToolPicker = false;
+    }
+
+    private async Task SelectTool(CliToolConfig tool)
+    {
+        _selectedToolId = tool.Id;
+        CloseToolPicker();
+        await OnToolChanged();
+        StateHasChanged();
+    }
+
+    private void OpenLanguagePicker()
+    {
+        _showLanguagePicker = true;
+    }
+
+    private void CloseLanguagePicker()
+    {
+        _showLanguagePicker = false;
+    }
+
+    private async Task SelectLanguage(WebCodeCli.Domain.Domain.Service.LanguageInfo lang)
+    {
+        _currentLanguage = lang.Code;
+        CloseLanguagePicker();
+        await OnMobileLanguageChanged();
+        StateHasChanged();
+    }
+
+    private string GetSelectedToolLabel()
+    {
+        var tool = _availableTools.FirstOrDefault(t => t.Id == _selectedToolId);
+        return tool?.Name ?? T("codeAssistant.selectTool");
+    }
+
+    private string GetSelectedToolDescription()
+    {
+        var tool = _availableTools.FirstOrDefault(t => t.Id == _selectedToolId);
+        return tool?.Description ?? string.Empty;
+    }
+
+    private string GetSelectedLanguageLabel()
+    {
+        var lang = _supportedLanguages.FirstOrDefault(l => l.Code == _currentLanguage);
+        return lang == null ? T("codeAssistant.language") : $"{lang.NativeName} ({lang.Name})";
     }
     
     private async Task DownloadAllFiles()
